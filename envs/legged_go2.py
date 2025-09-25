@@ -561,7 +561,7 @@ class LeggedRobot(BaseTask):
         """
 
     def _process_rigid_body_props(self, props, env_id):
-     
+        pass
 
     
     def _process_dof_props(self, props, env_id):

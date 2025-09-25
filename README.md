@@ -1,3 +1,52 @@
+# Training go2 with IsaacGym
+
+## Install Ubuntu20.04
+
++ Ubuntu https://mirrors4.tuna.tsinghua.edu.cn/ubuntu-releases/
+
++ Refus https://rufus.ie/zh/
+
++ (safe graphics) if not successful
+
++ Partition: https://blog.csdn.net/wyr1849089774/article/details/133387874?spm=1001.2014.3001.5506
+
++ Connect wifi & check install third-party software
+
++ Clash-verge 1.7.0 suits 20.04
+
++ Cuda: https://blog.csdn.net/weixin_37926734/article/details/123033286?spm=1001.2014.3001.5506
+
+## Install Isaacgym
+
++ Download: https://developer.nvidia.com/isaac-gym
+
++ Doc: https://junxnone.github.io/isaacgymdocs/install.html
+
+**Important!!**
+
+Do not use `./create_conda_env_rlgpu.sh`. It may cause version conflicts. Install pytorch independently.
+
+```
+pip install torch==1.13.1+cu117 torchvision==0.14.1+cu117 torchaudio==0.13.1 --extra-index-url https://download.pytorch.org/whl/cu117
+```
+
++ Tutor: https://blog.csdn.net/m0_37802038/article/details/134629194?spm=1001.2014.3001.5506
+
++ Install right python version 3.7(deadsnakes-ppa)
+
+## Install rsl_rl & leggedgym
+
+```
+git clone https://github.com/leggedrobotics/rsl_rl
+git checkout v1.0.2
+pip install -e .
+git clone https://github.com/leggedrobotics/legged_gym
+pip install -e .
+```
+https://github.com/leggedrobotics/legged_gym
+
+
+
 一、快速入门
 cd THURL
 
