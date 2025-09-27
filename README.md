@@ -46,6 +46,7 @@ pip install -e .
 https://github.com/leggedrobotics/legged_gym
 
 
+## Code structure
 
 一、快速入门
 cd THURL
