@@ -58,7 +58,7 @@ class Go2Cfg( LeggedRobotCfg ):
 
         use_filter = True
 
-    class commands( LeggedRobotCfg.control ):
+    class commands( LeggedRobotCfg.commands ):
         curriculum = False
         max_curriculum = 1.
         num_commands = 4  # default: lin_vel_x, lin_vel_y, ang_vel_yaw, heading (in heading mode ang_vel_yaw is recomputed from heading error)
@@ -120,10 +120,22 @@ class Go2Cfg( LeggedRobotCfg ):
     
     class costs:
         class scales:
-            pass
+            roll = 1.0
+            pitch = 1.0
+            feet_air_time = 1.0
+            feet_stumble = 0.5
+            action_rate = 0.3
+            hip_pos = 0.3
+            foot_width = 0.3
 
         class d_values:
-            pass
+            roll = 0.5
+            pitch = 0.5
+            feet_air_time = 0.2
+            feet_stumble = 0.1
+            action_rate = 0.1
+            hip_pos = 0.1
+            foot_width = 0.1
  
     class cost:
         num_costs = 7

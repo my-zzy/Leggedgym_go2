@@ -3,6 +3,11 @@ import os
 from isaacgym.torch_utils import *
 from isaacgym import gymtorch, gymapi, gymutil
 import torch
+import numpy as np
+import os
+import torchvision
+from isaacgym.torch_utils import to_torch, quat_rotate_inverse, quat_apply, torch_rand_float
+import torch
 from typing import Dict
 import random
 
@@ -617,8 +622,10 @@ class LeggedRobot(BaseTask):
 
         control_type = self.cfg.control.control_type
         if control_type=="P":
+            # Calculate joint position targets from actions
+            joint_pos_target = actions_scaled + self.default_dof_pos
             if not self.cfg.domain_rand.randomize_kpkd:  # TODO add strength to gain directly
-                torques = self.p_gains*(joint_pos_target- self.dof_pos) - self.d_gains*self.dof_vel
+                torques = self.p_gains*(joint_pos_target - self.dof_pos) - self.d_gains*self.dof_vel
             else:
                 torques = self.kp_factor * self.p_gains*(joint_pos_target - self.dof_pos) - self.kd_factor * self.d_gains*self.dof_vel
         elif control_type=="V":
