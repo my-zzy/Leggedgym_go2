@@ -4,6 +4,7 @@ from typing import Tuple
 
 from envs.vec_env import VecEnv
 from onpolicy import Onexecute
+# from rsl_rl.runners import OnPolicyRunner
 
 from global_config import ROOT_DIR, ENVS_DIR
 from .helpers import get_args, update_cfg_from_args, class_to_dict, get_load_path, set_seed, parse_sim_params
@@ -103,15 +104,15 @@ class TaskRegistry():
         _, train_cfg = update_cfg_from_args(None, train_cfg, args)
 
         if log_root=="default":
-            log_root = os.path.join(ROOT_DIR, 'logs', train_cfg.onpolicy.experiment_name)
-            log_dir = os.path.join(log_root, datetime.now().strftime('%b%d_%H-%M-%S') + '_' + train_cfg.onpolicy.run_name)
+            log_root = os.path.join(ROOT_DIR, 'logs', train_cfg.runner.experiment_name)
+            log_dir = os.path.join(log_root, datetime.now().strftime('%b%d_%H-%M-%S') + '_' + train_cfg.runner.run_name)
         elif log_root is None:
             log_dir = None
         else:
-            log_dir = os.path.join(log_root, datetime.now().strftime('%b%d_%H-%M-%S') + '_' + train_cfg.onpolicy.run_name)
+            log_dir = os.path.join(log_root, datetime.now().strftime('%b%d_%H-%M-%S') + '_' + train_cfg.runner.run_name)
         
         train_cfg_dict = class_to_dict(train_cfg)
-        runner_class = eval(train_cfg.onpolicy.runner_class_name)
+        runner_class = eval(train_cfg.runner.runner_class_name)
         runner = runner_class(env, train_cfg_dict, log_dir, device=args.rl_device)
         return runner, train_cfg
 task_registry = TaskRegistry()

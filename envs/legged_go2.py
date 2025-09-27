@@ -564,9 +564,37 @@ class LeggedRobot(BaseTask):
         Returns:
             [List[gymapi.RigidShapeProperties]]: Modified rigid shape properties
         """
+        if self.cfg.domain_rand.randomize_friction:
+            # Randomize friction coefficients for each rigid shape
+            rand_frictions = torch_rand_float(0.5, 1.25, (len(props), 2), device=self.device)
+            # self.friction_coeffs_tensor[env_id, :] = rand_frictions[:, 0]
+            for s in range(len(props)):
+                props[s].friction = rand_frictions[s, 0]
+                props[s].restitution = rand_frictions[s, 1]
+        return props
 
     def _process_rigid_body_props(self, props, env_id):
-        pass
+        """ Callback allowing to store/change/randomize the rigid body properties of each environment.
+            Called During environment creation.
+
+        Args:
+            props (List[gymapi.RigidBodyProperties]): Properties of each rigid body of the asset
+            env_id (int): Environment id
+
+        Returns:
+            tuple: (Modified rigid body properties, Mass parameters)
+        """
+        # Update properties like mass, COM, inertia if needed
+        # This is typically used for domain randomization of physical properties
+        mass_params = np.zeros(4)
+        for i, p in enumerate(props):
+            if i == 0:  # Assuming the first body is the main body
+                rand_mass = 0.5 + np.random.uniform(0, 1)
+                p.mass *= rand_mass
+                mass_params[0] = p.mass
+                # Could store COM and inertia in mass_params[1:] if needed
+        
+        return props, mass_params
 
     
     def _process_dof_props(self, props, env_id):
@@ -1179,6 +1207,101 @@ class LeggedRobot(BaseTask):
 
         return base_height
 
+
+
+    #------------ reward functions----------------
+    def _reward_lin_vel_z(self):
+        # Penalize z axis base linear velocity
+        return torch.square(self.base_lin_vel[:, 2])
+    
+    def _reward_ang_vel_xy(self):
+        # Penalize xy axes base angular velocity
+        return torch.sum(torch.square(self.base_ang_vel[:, :2]), dim=1)
+    
+    def _reward_orientation(self):
+        # Penalize non flat base orientation
+        return torch.sum(torch.square(self.projected_gravity[:, :2]), dim=1)
+
+    def _reward_base_height(self):
+        # Penalize base height away from target
+        base_height = torch.mean(self.root_states[:, 2].unsqueeze(1) - self.measured_heights, dim=1)
+        return torch.square(base_height - self.cfg.rewards.base_height_target)
+    
+    def _reward_torques(self):
+        # Penalize torques
+        return torch.sum(torch.square(self.torques), dim=1)
+
+    def _reward_dof_vel(self):
+        # Penalize dof velocities
+        return torch.sum(torch.square(self.dof_vel), dim=1)
+    
+    def _reward_dof_acc(self):
+        # Penalize dof accelerations
+        return torch.sum(torch.square((self.last_dof_vel - self.dof_vel) / self.dt), dim=1)
+    
+    def _reward_action_rate(self):
+        # Penalize changes in actions
+        return torch.sum(torch.square(self.last_actions - self.actions), dim=1)
+    
+    def _reward_collision(self):
+        # Penalize collisions on selected bodies
+        return torch.sum(1.*(torch.norm(self.contact_forces[:, self.penalised_contact_indices, :], dim=-1) > 0.1), dim=1)
+    
+    def _reward_termination(self):
+        # Terminal reward / penalty
+        return self.reset_buf * ~self.time_out_buf
+    
+    def _reward_dof_pos_limits(self):
+        # Penalize dof positions too close to the limit
+        out_of_limits = -(self.dof_pos - self.dof_pos_limits[:, 0]).clip(max=0.) # lower limit
+        out_of_limits += (self.dof_pos - self.dof_pos_limits[:, 1]).clip(min=0.)
+        return torch.sum(out_of_limits, dim=1)
+
+    def _reward_dof_vel_limits(self):
+        # Penalize dof velocities too close to the limit
+        # clip to max error = 1 rad/s per joint to avoid huge penalties
+        return torch.sum((torch.abs(self.dof_vel) - self.dof_vel_limits*self.cfg.rewards.soft_dof_vel_limit).clip(min=0., max=1.), dim=1)
+
+    def _reward_torque_limits(self):
+        # penalize torques too close to the limit
+        return torch.sum((torch.abs(self.torques) - self.torque_limits*self.cfg.rewards.soft_torque_limit).clip(min=0.), dim=1)
+
+    def _reward_tracking_lin_vel(self):
+        # Tracking of linear velocity commands (xy axes)
+        lin_vel_error = torch.sum(torch.square(self.commands[:, :2] - self.base_lin_vel[:, :2]), dim=1)
+        return torch.exp(-lin_vel_error/self.cfg.rewards.tracking_sigma)
+    
+    def _reward_tracking_ang_vel(self):
+        # Tracking of angular velocity commands (yaw) 
+        ang_vel_error = torch.square(self.commands[:, 2] - self.base_ang_vel[:, 2])
+        return torch.exp(-ang_vel_error/self.cfg.rewards.tracking_sigma)
+
+    def _reward_feet_air_time(self):
+        # Reward long steps
+        # Need to filter the contacts because the contact reporting of PhysX is unreliable on meshes
+        contact = self.contact_forces[:, self.feet_indices, 2] > 1.
+        contact_filt = torch.logical_or(contact, self.last_contacts) 
+        self.last_contacts = contact
+        first_contact = (self.feet_air_time > 0.) * contact_filt
+        self.feet_air_time += self.dt
+        rew_airTime = torch.sum((self.feet_air_time - 0.5) * first_contact, dim=1) # reward only on first contact with the ground
+        rew_airTime *= torch.norm(self.commands[:, :2], dim=1) > 0.1 #no reward for zero command
+        self.feet_air_time *= ~contact_filt
+        return rew_airTime
+    
+    def _reward_stumble(self):
+        # Penalize feet hitting vertical surfaces
+        return torch.any(torch.norm(self.contact_forces[:, self.feet_indices, :2], dim=2) >\
+             5 *torch.abs(self.contact_forces[:, self.feet_indices, 2]), dim=1)
+        
+    def _reward_stand_still(self):
+        # Penalize motion at zero commands
+        return torch.sum(torch.abs(self.dof_pos - self.default_dof_pos), dim=1) * (torch.norm(self.commands[:, :2], dim=1) < 0.1)
+
+    def _reward_feet_contact_forces(self):
+        # penalize high contact forces
+        return torch.sum((torch.norm(self.contact_forces[:, self.feet_indices, :], dim=-1) -  self.cfg.rewards.max_contact_force).clip(min=0.), dim=1)
+
     def _reward_foot_width_equlity(self):
         cur_footpos_translated = self.feet_pos - self.root_states[:, 0:3].unsqueeze(1)
         footpos_in_body_frame = torch.zeros(self.num_envs, len(self.feet_indices), 3, device=self.device)
@@ -1232,6 +1355,48 @@ class LeggedRobot(BaseTask):
         pattern_match2 = torch.mean(torch.abs(contact_filt - self.trot_pattern2), dim=-1)
         pattern_match_flag = 1. * (pattern_match1 * pattern_match2 > 0)
         return pattern_match_flag * (torch.norm(self.commands[:, :2], dim=1) > 0.1)
+
+
+    #------------ cost functions----------------
+    def _cost_roll(self):
+        # Cost based on roll deviation
+        roll = torch.abs(torch.atan2(self.projected_gravity[:, 1], self.projected_gravity[:, 2]))
+        return roll
+
+    def _cost_pitch(self):
+        # Cost based on pitch deviation
+        pitch = torch.abs(torch.atan2(-self.projected_gravity[:, 0], 
+                         torch.norm(self.projected_gravity[:, 1:3], dim=1)))
+        return pitch
+
+    def _cost_feet_air_time(self):
+        # Cost based on feet being in the air too long
+        contact = self.contact_forces[:, self.feet_indices, 2] > 1.
+        return torch.sum(~contact, dim=1).float()
+
+    def _cost_feet_stumble(self):
+        # Cost for feet stumbling (horizontal forces when in contact)
+        contact = self.contact_forces[:, self.feet_indices, 2] > 1.
+        horizontal_forces = torch.norm(self.contact_forces[:, self.feet_indices, :2], dim=2)
+        return torch.sum(horizontal_forces * contact.float(), dim=1)
+
+    def _cost_action_rate(self):
+        # Cost for sudden action changes
+        return torch.sum(torch.abs(self.actions - self.last_actions), dim=1)
+
+    def _cost_hip_pos(self):
+        # Cost for hip joint positions deviating from nominal
+        hip_indices = [0, 3, 6, 9]  # Indices for hip joints
+        hip_pos = self.dof_pos[:, hip_indices]
+        nominal_pos = self.default_dof_pos[:, hip_indices]
+        return torch.sum(torch.abs(hip_pos - nominal_pos), dim=1)
+
+    def _cost_foot_width(self):
+        # Cost for foot positions deviating from nominal width
+        foot_distances = torch.norm(self.feet_pos[:, :, [0, 1]] - self.feet_pos[:, [1, 0, 3, 2], [0, 1]], dim=2)
+        nominal_distance = 0.3  # Nominal lateral distance between feet
+        return torch.sum(torch.abs(foot_distances - nominal_distance), dim=1)
+
 
         
 

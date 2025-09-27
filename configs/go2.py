@@ -3,7 +3,7 @@ from configs.legged_go2_config import LeggedRobotCfg, LeggedRobotCfgPPO
 
 class Go2Cfg( LeggedRobotCfg ):
     class env(LeggedRobotCfg.env):
-        num_envs = 4096
+        num_envs = 96
 
         n_scan = 187
         n_priv_latent = 54
@@ -179,12 +179,13 @@ class Go2CfgPPO( LeggedRobotCfgPPO ):
         run_name = 'THUtest'
         experiment_name = 'THU_go2'
         policy_class_name = 'ActorCriticMixedBarlowTwins'
-        runner_class_name = 'OnConstraintPolicyRunner'
+        # runner_class_name = 'OnConstraintPolicyRunner'
+        runner_class_name = 'OnPolicyRunner'
         algorithm_class_name = 'PPO'
         max_iterations = 100
         num_steps_per_env = 2
         resume = False
         resume_path = ''
- 
+
 
   
