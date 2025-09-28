@@ -87,12 +87,46 @@ class Go2Cfg( LeggedRobotCfg ):
         clearance_height_target = -0.2
 
         class scales( LeggedRobotCfg.rewards.scales ):
+            termination = -0.0
+            tracking_lin_vel = 1.0
+            tracking_ang_vel = 0.5
+            lin_vel_z = -2.0
+            ang_vel_xy = -0.05
+            orientation = -0.
+            torques = -0.00001  # Changed from 0.0 to small penalty
+            dof_vel = -0.
+            dof_acc = -2.5e-7
+            base_height = -0.
+            feet_air_time = 1.0
+            collision = -1.
+            feet_stumble = -0.0
+            action_rate = -0.01
+            stand_still = -0.
 
-            torques = 0.0
+        only_positive_rewards = True
+        tracking_sigma = 0.25
+        soft_dof_pos_limit = 0.9  # GO2 specific - tighter than base
+        soft_dof_vel_limit = 1.
+        soft_torque_limit = 1.
+        base_height_target = 0.30  # GO2 specific height
+        max_contact_force = 100.
 
 
     class domain_rand( LeggedRobotCfg.domain_rand):
         randomize_friction = True
+        friction_range = [0.5, 1.25]
+        randomize_base_mass = False
+        added_mass_range = [-1., 1.]
+        push_robots = True
+        push_interval_s = 15
+        max_push_vel_xy = 1.
+        
+        # Motor and PD gain randomization
+        randomize_kpkd = False  # Enable/disable PD gain randomization
+        motor_strength_range = [0.9, 1.1]  # Motor strength variation range
+        kp_range = [0.8, 1.2]  # Proportional gain variation range
+        kd_range = [0.5, 1.5]  # Derivative gain variation range
+        lag_timesteps = 6  # Action lag for realism
 
     
     class depth( LeggedRobotCfg.depth):
@@ -120,11 +154,26 @@ class Go2Cfg( LeggedRobotCfg ):
     
     class costs:
         class scales:
-
+            # Cost function scaling factors for constraint-based training
+            joint_pos_limits = 1.0
+            joint_vel_limits = 1.0
+            torque_limits = 1.0
+            collision = 10.0
+            base_orientation = 1.0
+            feet_contact_forces = 1.0
+            action_smoothness = 0.1
 
         class d_values:
+            # Threshold values for cost functions
+            joint_pos_limit_threshold = 0.9
+            joint_vel_limit_threshold = 0.9
+            torque_limit_threshold = 0.9
+            collision_threshold = 1.0
+            base_orientation_threshold = 0.5
+            feet_contact_force_threshold = 100.0
+            action_rate_threshold = 2.0
 
- 
+
     class cost:
         num_costs = 7
     
@@ -162,7 +211,7 @@ class Go2CfgPPO( LeggedRobotCfgPPO ):
 
         teacher_act = False
         imi_flag = False
-      
+    
     class runner( LeggedRobotCfgPPO.runner ):
         run_name = 'THUtest'
         experiment_name = 'THU_go2'

@@ -1,4 +1,4 @@
-from .base_config  import BaseConfig
+from .base_config import BaseConfig
 
 class LeggedRobotCfg(BaseConfig):
     class env:
@@ -137,11 +137,11 @@ class LeggedRobotCfg(BaseConfig):
         thickness = 0.01
 
     class domain_rand:
-
+        pass
 
     class rewards:
         class scales:
-
+            pass
 
     class normalization:
         class obs_scales:
@@ -194,7 +194,7 @@ class LeggedRobotCfg(BaseConfig):
 class LeggedRobotCfgPPO(BaseConfig):
     seed = 1
     runner_class_name = 'OnPolicyRunner'
- 
+
     class policy:
         init_noise_std = 1.0
         continue_from_last_std = True

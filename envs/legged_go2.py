@@ -559,9 +559,52 @@ class LeggedRobot(BaseTask):
         Returns:
             [List[gymapi.RigidShapeProperties]]: Modified rigid shape properties
         """
+        if env_id == 0:
+            self.friction_coeffs_tensor = torch.zeros(self.num_envs, 1, device=self.device, requires_grad=False)
+            self.restitution_coeffs_tensor = torch.zeros(self.num_envs, 1, device=self.device, requires_grad=False)
+            
+        # Randomize friction if enabled in domain randomization
+        if self.cfg.domain_rand.randomize_friction:
+            friction_range = self.cfg.domain_rand.friction_range
+            friction_coeff = np.random.uniform(friction_range[0], friction_range[1])
+            for s in range(len(props)):
+                props[s].friction = friction_coeff
+            self.friction_coeffs_tensor[env_id, 0] = friction_coeff
+        else:
+            self.friction_coeffs_tensor[env_id, 0] = self.cfg.terrain.static_friction
+            
+        # Set restitution
+        for s in range(len(props)):
+            props[s].restitution = self.cfg.terrain.restitution
+        self.restitution_coeffs_tensor[env_id, 0] = self.cfg.terrain.restitution
+        
+        return props
 
     def _process_rigid_body_props(self, props, env_id):
-     
+        """ Callback allowing to store/change/randomize the rigid body properties of each environment.
+            Called During environment creation.
+
+        Args:
+            props (List[gymapi.RigidBodyProperties]): Properties of each body of the asset
+            env_id (int): Environment id
+
+        Returns:
+            [List[gymapi.RigidBodyProperties], np.array]: Modified rigid body properties and mass parameters
+        """
+        mass_params = np.zeros(4)
+        
+        # Randomize base mass if enabled
+        if self.cfg.domain_rand.randomize_base_mass:
+            added_mass_range = self.cfg.domain_rand.added_mass_range
+            added_mass = np.random.uniform(added_mass_range[0], added_mass_range[1])
+            props[0].mass += added_mass
+            mass_params[0] = added_mass
+        
+        # Store original masses for other bodies
+        for i in range(1, len(props)):
+            mass_params[min(i, 3)] = props[i].mass
+            
+        return props, mass_params
 
     
     def _process_dof_props(self, props, env_id):
@@ -613,14 +656,16 @@ class LeggedRobot(BaseTask):
         #pd controller
         actions_scaled = actions[:, :12] * self.cfg.control.action_scale
         actions_scaled[:, [0, 3, 6, 9]] *= self.cfg.control.hip_scale_reduction
-
+        
+        # Compute target joint positions
+        joint_pos_target = actions_scaled + self.default_dof_pos
 
         control_type = self.cfg.control.control_type
         if control_type=="P":
-            if not self.cfg.domain_rand.randomize_kpkd:  # TODO add strength to gain directly
-                torques = self.p_gains*(joint_pos_target- self.dof_pos) - self.d_gains*self.dof_vel
-            else:
+            if hasattr(self.cfg.domain_rand, 'randomize_kpkd') and self.cfg.domain_rand.randomize_kpkd:
                 torques = self.kp_factor * self.p_gains*(joint_pos_target - self.dof_pos) - self.kd_factor * self.d_gains*self.dof_vel
+            else:
+                torques = self.p_gains*(joint_pos_target- self.dof_pos) - self.d_gains*self.dof_vel
         elif control_type=="V":
             torques = self.p_gains*(actions_scaled - self.dof_vel) - self.d_gains*(self.dof_vel - self.last_dof_vel)/self.sim_params.dt
         elif control_type=="T":
@@ -662,7 +707,7 @@ class LeggedRobot(BaseTask):
         self.cost_buf[:] = 0
         for i in range(len(self.cost_functions)):
             name = self.cost_names[i]
-            cost = self.cost_functions[i]() * self.dt #self.cost_scales[name]
+            cost = self.cost_functions[i]() * self.cost_scales[name] * self.dt
             self.cost_buf[:,i] += cost
             self.cost_episode_sums[name] += cost
     
@@ -1226,11 +1271,106 @@ class LeggedRobot(BaseTask):
         pattern_match_flag = 1. * (pattern_match1 * pattern_match2 > 0)
         return pattern_match_flag * (torch.norm(self.commands[:, :2], dim=1) > 0.1)
 
-        
+    #------------- Reward Functions (matching go2.py config) --------------
+    
+    def _reward_termination(self):
+        """ Penalty for episode termination """
+        return self.reset_buf.float()
+    
+    def _reward_tracking_lin_vel(self):
+        """ Reward for tracking linear velocity commands """
+        lin_vel_error = torch.sum(torch.square(self.commands[:, :2] - self.base_lin_vel[:, :2]), dim=1)
+        return torch.exp(-lin_vel_error/self.cfg.rewards.tracking_sigma)
+    
+    def _reward_tracking_ang_vel(self):
+        """ Reward for tracking angular velocity commands """
+        ang_vel_error = torch.square(self.commands[:, 2] - self.base_ang_vel[:, 2])
+        return torch.exp(-ang_vel_error/self.cfg.rewards.tracking_sigma)
+    
+    def _reward_lin_vel_z(self):
+        """ Penalty for vertical linear velocity """
+        return torch.square(self.base_lin_vel[:, 2])
+    
+    def _reward_ang_vel_xy(self):
+        """ Penalty for unwanted roll/pitch angular velocities """
+        return torch.sum(torch.square(self.base_ang_vel[:, :2]), dim=1)
+    
+    def _reward_orientation(self):
+        """ Penalty for base orientation deviation from upright """
+        return torch.sum(torch.square(self.projected_gravity[:, :2]), dim=1)
+    
+    def _reward_torques(self):
+        """ Penalty for high torques """
+        return torch.sum(torch.square(self.torques), dim=1)
+    
+    def _reward_dof_vel(self):
+        """ Penalty for joint velocities """
+        return torch.sum(torch.square(self.dof_vel), dim=1)
+    
+    def _reward_dof_acc(self):
+        """ Penalty for joint accelerations """
+        return torch.sum(torch.square((self.dof_vel - self.last_dof_vel) / self.dt), dim=1)
+    
+    def _reward_base_height(self):
+        """ Penalty for base height deviation from target """
+        return torch.square(self.root_states[:, 2] - self.cfg.rewards.base_height_target)
+    
+    def _reward_feet_air_time(self):
+        """ Reward for feet spending time in air (proper gait) """
+        contact = self.contact_forces[:, self.feet_indices, 2] > 1.
+        contact_filt = torch.logical_or(contact, self.last_contacts)
+        self.last_contacts = contact
+        first_contact = (self.feet_air_time > 0.) * contact_filt
+        self.feet_air_time += self.dt
+        rew_airTime = torch.sum((self.feet_air_time - 0.5) * first_contact, dim=1)
+        rew_airTime *= torch.norm(self.commands[:, :2], dim=1) > 0.1
+        self.feet_air_time *= ~contact_filt
+        return rew_airTime
+    
+    def _reward_collision(self):
+        """ Penalty for collisions with penalized body parts """
+        return torch.sum(1.*(torch.norm(self.contact_forces[:, self.penalised_contact_indices, :], dim=-1) > 0.1), dim=1)
+    
+    def _reward_feet_stumble(self):
+        """ Penalty for foot stumbling """
+        return torch.sum(1.*(torch.norm(self.contact_forces[:, self.feet_indices, :2], dim=2) > 5.0), dim=1)
+    
+    def _reward_action_rate(self):
+        """ Penalty for rapid action changes """
+        return torch.sum(torch.square(self.last_actions - self.actions), dim=1)
+    
+    def _reward_stand_still(self):
+        """ Penalty for standing still when commanded to move """
+        return torch.sum(torch.abs(self.dof_pos - self.default_dof_pos), dim=1) * (torch.norm(self.commands[:, :2], dim=1) < 0.1)
 
+    #------------- Cost Functions (matching go2.py config) --------------
     
+    def _cost_joint_pos_limits(self):
+        """ Cost for violating joint position limits """
+        out_of_limits = -(self.dof_pos - self.dof_pos_limits[:, 0]).clip(max=0.)
+        out_of_limits += (self.dof_pos - self.dof_pos_limits[:, 1]).clip(min=0.)
+        return torch.sum(out_of_limits, dim=1)
     
+    def _cost_joint_vel_limits(self):
+        """ Cost for violating joint velocity limits """
+        return torch.sum((torch.abs(self.dof_vel) - self.dof_vel_limits).clip(min=0.), dim=1)
     
+    def _cost_torque_limits(self):
+        """ Cost for violating torque limits """
+        return torch.sum((torch.abs(self.torques) - self.torque_limits).clip(min=0.), dim=1)
     
-
+    def _cost_collision(self):
+        """ Cost for body collisions """
+        return torch.sum(1.*(torch.norm(self.contact_forces[:, self.penalised_contact_indices, :], dim=-1) > 1.), dim=1)
     
+    def _cost_base_orientation(self):
+        """ Cost for excessive base orientation """
+        return torch.sum(torch.square(self.projected_gravity[:, :2]), dim=1)
+    
+    def _cost_feet_contact_forces(self):
+        """ Cost for excessive contact forces """
+        return torch.sum((torch.norm(self.contact_forces[:, self.feet_indices, :], dim=2) - self.cfg.rewards.max_contact_force).clip(min=0.), dim=1)
+    
+    def _cost_action_smoothness(self):
+        """ Cost for non-smooth actions """
+        return torch.sum(torch.square(self.last_actions - self.actions), dim=1)
