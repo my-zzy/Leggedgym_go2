@@ -63,6 +63,9 @@ class PPO:
         self.actor_critic = actor_critic
         self.actor_critic.to(self.device)
         
+        # Estimator (placeholder - might be used for some models)
+        self.estimator = None
+        
         # Depth processing (if enabled)
         self.depth_encoder = depth_encoder
         self.depth_actor = depth_actor
@@ -108,16 +111,18 @@ class PPO:
             self.transition.hidden_states = self.actor_critic.get_hidden_states()
         
         # Get policy outputs
-        self.transition.actions, self.transition.actions_log_prob, self.transition.action_mean, self.transition.action_sigma, self.transition.hidden_states = self.actor_critic.act(
-            observations, privileged_observations, self.transition.hidden_states
-        )
+        self.transition.actions = self.actor_critic.act(observations, privileged_observations=privileged_observations, hidden_states=self.transition.hidden_states)
+        self.transition.actions_log_prob = self.actor_critic.get_actions_log_prob(self.transition.actions)
+        self.transition.action_mean = self.actor_critic.action_mean
+        self.transition.action_sigma = self.actor_critic.action_std
+        # Hidden states remain the same for non-recurrent networks
         
         # Get value estimates
-        self.transition.values = self.actor_critic.evaluate(observations, privileged_observations, self.transition.hidden_states)
+        self.transition.values = self.actor_critic.evaluate(observations)
         
         # Get cost value estimates (for constrained training)
         if hasattr(self.actor_critic, 'evaluate_cost'):
-            self.transition.cost_values = self.actor_critic.evaluate_cost(observations, privileged_observations, self.transition.hidden_states)
+            self.transition.cost_values = self.actor_critic.evaluate_cost(observations)
         else:
             self.transition.cost_values = torch.zeros_like(self.transition.values)
         
@@ -138,13 +143,27 @@ class PPO:
 
     def compute_returns(self, last_critic_obs, last_critic_privileged_obs=None):
         """Compute returns and advantages using GAE"""
-        last_values = self.actor_critic.evaluate(last_critic_obs, last_critic_privileged_obs).detach()
+        last_values = self.actor_critic.evaluate(last_critic_obs).detach()
+        self.storage.compute_returns(last_values, self.gamma, self.lam)
+
+    def compute_cost_returns(self, last_critic_obs, last_critic_privileged_obs=None):
+        """Compute cost returns and advantages using GAE"""
         if hasattr(self.actor_critic, 'evaluate_cost'):
-            last_cost_values = self.actor_critic.evaluate_cost(last_critic_obs, last_critic_privileged_obs).detach()
+            last_cost_values = self.actor_critic.evaluate_cost(last_critic_obs).detach()
         else:
-            last_cost_values = torch.zeros_like(last_values)
-            
-        self.storage.compute_returns(last_values, last_cost_values, self.gamma, self.lam)
+            last_cost_values = torch.zeros_like(self.actor_critic.evaluate(last_critic_obs).detach())
+        self.storage.compute_cost_returns(last_cost_values, self.gamma, self.lam)
+
+    def update_k_value(self, iteration):
+        """Update k value for constrained RL (placeholder implementation)"""
+        # Placeholder - implement actual k-value update logic if needed
+        return self.k_value
+
+    def set_imi_weight(self, weight):
+        """Set imitation learning weight"""
+        # Pass the weight to actor-critic if it supports imitation learning
+        if hasattr(self.actor_critic, 'set_imi_weight'):
+            self.actor_critic.set_imi_weight(weight)
 
     def update(self):
         """Update policy using PPO with cost constraints"""
@@ -156,7 +175,7 @@ class PPO:
         
         generator = self.storage.mini_batch_generator(self.num_mini_batches, self.num_learning_epochs)
         
-        for obs_batch, critic_obs_batch, actions_batch, target_values_batch, advantages_batch, returns_batch, old_actions_log_prob_batch, old_mu_batch, old_sigma_batch, hid_states_batch, masks_batch, cost_advantages_batch, cost_returns_batch in generator:
+        for obs_batch, critic_obs_batch, actions_batch, target_values_batch, advantages_batch, returns_batch, old_actions_log_prob_batch, old_mu_batch, old_sigma_batch, hid_states_batch, masks_batch, target_cost_values_batch, cost_advantages_batch, cost_returns_batch, cost_violation_batch in generator:
             
             actions_log_prob_batch, entropy_batch, value_batch, mu_batch, sigma_batch, cost_value_batch = self.actor_critic.evaluate_actions(
                 obs_batch, critic_obs_batch, actions_batch, hid_states_batch, masks_batch
@@ -181,7 +200,10 @@ class PPO:
             cost_value_loss = (cost_returns_batch - cost_value_batch).pow(2).mean()
 
             # Cost constraint loss (Lagrangian)
-            cost_surrogate_loss = (cost_advantages_batch * ratio).mean()
+            # cost_advantages_batch has shape [batch_size, num_costs], ratio has shape [batch_size]
+            # Need to expand ratio to match cost_advantages_batch dimensions
+            ratio_expanded = ratio.unsqueeze(-1)  # [batch_size, 1]
+            cost_surrogate_loss = (cost_advantages_batch * ratio_expanded).mean()
 
             # Entropy loss
             entropy_loss = entropy_batch.mean()
@@ -211,6 +233,9 @@ class PPO:
         mean_cost_surrogate_loss /= num_updates
         mean_entropy_loss /= num_updates
         
+        # Placeholder for imitation loss (not implemented in this PPO)
+        mean_imitation_loss = 0.0
+        
         self.storage.clear()
 
-        return mean_value_loss, mean_cost_value_loss, mean_surrogate_loss, mean_cost_surrogate_loss, mean_entropy_loss
+        return mean_value_loss, mean_cost_value_loss, mean_cost_surrogate_loss, mean_surrogate_loss, mean_imitation_loss

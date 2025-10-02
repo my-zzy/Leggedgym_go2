@@ -824,6 +824,29 @@ class ActorCriticMixedBarlowTwins(nn.Module):
     def imitation_mode(self):
         pass
     
+    def evaluate_actions(self, obs, critic_obs, actions, hidden_states=None, masks=None):
+        """Evaluate actions for PPO update - required method for training"""
+        # Get action mean using the teacher actor backbone
+        obs_prop = obs[:, :self.num_prop]
+        obs_hist = obs[:, -self.num_hist*self.num_prop:].view(-1, self.num_hist, self.num_prop)
+        mean = self.actor_teacher_backbone(obs_prop, obs_hist)
+        
+        # Create distribution for log prob and entropy calculation
+        distribution = Normal(mean, mean*0. + self.get_std())
+        actions_log_prob = distribution.log_prob(actions).sum(dim=-1)
+        entropy = distribution.entropy().sum(dim=-1)
+        
+        # Get value estimates (using the full observation processing)
+        scan_latent = self.infer_scandots_latent(obs)
+        latent = self.infer_priv_latent(obs)
+        hist_latent = self.infer_hist_latent(obs)
+        backbone_input = torch.cat([obs_prop, latent, scan_latent, hist_latent], dim=1)
+        
+        value = self.critic(backbone_input)
+        cost_value = self.cost(backbone_input)
+        
+        return actions_log_prob, entropy, value, mean, self.get_std(), cost_value
+    
     def save_torch_jit_policy(self,path,device):
         obs_demo_input = torch.randn(1,self.num_prop).half().to(device)
         hist_demo_input = torch.randn(1,self.num_hist,self.num_prop).half().to(device)

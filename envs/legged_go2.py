@@ -95,6 +95,9 @@ class LeggedRobot(BaseTask):
         force_sensor_tensor = self.gym.acquire_force_sensor_tensor(self.sim)
         rigid_body_state_tensor = self.gym.acquire_rigid_body_state_tensor(self.sim)
 
+        # Initialize randomized lag tensor for action lag simulation
+        self.randomized_lag_tensor = torch.randint(0, self.cfg.domain_rand.lag_timesteps, (self.num_envs, 1), dtype=torch.float, device=self.device, requires_grad=False)
+
         self.gym.refresh_dof_state_tensor(self.sim)
         self.gym.refresh_actor_root_state_tensor(self.sim)
         self.gym.refresh_net_contact_force_tensor(self.sim)
@@ -334,14 +337,29 @@ class LeggedRobot(BaseTask):
     
     def compute_observations(self):
 
-        obs_buf =torch.cat((self.base_ang_vel  * self.obs_scales.ang_vel,
-                            self.projected_gravity,
-                            self.commands[:, :3] * self.commands_scale,
-                            self.reindex((self.dof_pos - self.default_dof_pos) * self.obs_scales.dof_pos),
-                            self.reindex(self.dof_vel * self.obs_scales.dof_vel),
-                            #self.reindex_feet(self.contact_filt.float()-0.5),
-                            # self.reindex(self.action_history_buf[:,-1])),dim=-1)
-                            self.action_history_buf[:,-1]),dim=-1)
+        # DEBUG: Print shapes of each observation component
+        base_ang_vel_comp = self.base_ang_vel * self.obs_scales.ang_vel
+        projected_gravity_comp = self.projected_gravity
+        commands_comp = self.commands[:, :3] * self.commands_scale
+        dof_pos_comp = self.reindex((self.dof_pos - self.default_dof_pos) * self.obs_scales.dof_pos)
+        dof_vel_comp = self.reindex(self.dof_vel * self.obs_scales.dof_vel)
+        action_history_comp = self.action_history_buf[:,-1]
+        
+        # print(f"DEBUG compute_observations - base_ang_vel shape: {base_ang_vel_comp.shape}")
+        # print(f"DEBUG compute_observations - projected_gravity shape: {projected_gravity_comp.shape}")
+        # print(f"DEBUG compute_observations - commands shape: {commands_comp.shape}")
+        # print(f"DEBUG compute_observations - dof_pos shape: {dof_pos_comp.shape}")
+        # print(f"DEBUG compute_observations - dof_vel shape: {dof_vel_comp.shape}")
+        # print(f"DEBUG compute_observations - action_history shape: {action_history_comp.shape}")
+
+        obs_buf =torch.cat((base_ang_vel_comp,
+                            projected_gravity_comp,
+                            commands_comp,
+                            dof_pos_comp,
+                            dof_vel_comp,
+                            action_history_comp),dim=-1)
+        
+        print(f"DEBUG compute_observations - obs_buf (proprio) shape: {obs_buf.shape}")
 
         noise_scales = self.cfg.noise.noise_scales
         noise_level = self.cfg.noise.noise_level
@@ -360,26 +378,57 @@ class LeggedRobot(BaseTask):
         if self.cfg.noise.add_noise:
             obs_buf += (2 * torch.rand_like(obs_buf) - 1) * noise_vec.to(self.device)
 
-        priv_latent = torch.cat((
-            #self.base_lin_vel * self.obs_scales.lin_vel,
-            self.reindex_feet(self.contact_filt.float()-0.5),
-            self.randomized_lag_tensor,
-            #self.base_ang_vel  * self.obs_scales.ang_vel,
-            # self.base_lin_vel * self.obs_scales.lin_vel,
-            self.mass_params_tensor,
-            self.friction_coeffs_tensor,
-            self.restitution_coeffs_tensor,
-            self.motor_strength, 
-            self.kp_factor,
-            self.kd_factor), dim=-1)
+        # DEBUG: Print shapes of private latent components
+        contact_filt_comp = self.reindex_feet(self.contact_filt.float()-0.5)
+        lag_tensor_comp = self.randomized_lag_tensor
+        mass_params_comp = self.mass_params_tensor
+        friction_comp = self.friction_coeffs_tensor
+        restitution_comp = self.restitution_coeffs_tensor
+        motor_strength_comp = self.motor_strength
+        kp_factor_comp = self.kp_factor
+        kd_factor_comp = self.kd_factor
+        
+        # print(f"DEBUG compute_observations - contact_filt shape: {contact_filt_comp.shape}")
+        # print(f"DEBUG compute_observations - lag_tensor shape: {lag_tensor_comp.shape}")
+        # print(f"DEBUG compute_observations - mass_params shape: {mass_params_comp.shape}")
+        # print(f"DEBUG compute_observations - friction shape: {friction_comp.shape}")
+        # print(f"DEBUG compute_observations - restitution shape: {restitution_comp.shape}")
+        # print(f"DEBUG compute_observations - motor_strength shape: {motor_strength_comp.shape}")
+        # print(f"DEBUG compute_observations - kp_factor shape: {kp_factor_comp.shape}")
+        # print(f"DEBUG compute_observations - kd_factor shape: {kd_factor_comp.shape}")
+
+        priv_latent = torch.cat((contact_filt_comp,
+                                lag_tensor_comp,
+                                mass_params_comp,
+                                friction_comp,
+                                restitution_comp,
+                                motor_strength_comp, 
+                                kp_factor_comp,
+                                kd_factor_comp), dim=-1)
+        
+        print(f"DEBUG compute_observations - priv_latent shape: {priv_latent.shape}")
         
         # add perceptive inputs if not blind
         if self.cfg.terrain.measure_heights:
-            priv_latent = torch.cat([priv_latent,self.feet_heights.view(self.num_envs, -1)],dim=-1)
+            feet_heights_comp = self.feet_heights.view(self.num_envs, -1)
+            # print(f"DEBUG compute_observations - feet_heights shape: {feet_heights_comp.shape}")
+            priv_latent = torch.cat([priv_latent, feet_heights_comp], dim=-1)
+            # print(f"DEBUG compute_observations - priv_latent with feet_heights shape: {priv_latent.shape}")
+            
             heights = torch.clip(self.root_states[:, 2].unsqueeze(1) - 0.4 - self.measured_heights, -1, 1.)*self.obs_scales.height_measurements
-            self.obs_buf = torch.cat([obs_buf, heights, priv_latent, self.obs_history_buf.view(self.num_envs, -1)], dim=-1)
+            # print(f"DEBUG compute_observations - heights (n_scan) shape: {heights.shape}")
+            
+            history_buf_comp = self.obs_history_buf.view(self.num_envs, -1)
+            # print(f"DEBUG compute_observations - history_buf shape: {history_buf_comp.shape}")
+            
+            self.obs_buf = torch.cat([obs_buf, heights, priv_latent, history_buf_comp], dim=-1)
         else:
-            self.obs_buf = torch.cat([obs_buf, priv_latent, self.obs_history_buf.view(self.num_envs, -1)], dim=-1)
+            history_buf_comp = self.obs_history_buf.view(self.num_envs, -1)
+            # print(f"DEBUG compute_observations - history_buf shape: {history_buf_comp.shape}")
+            self.obs_buf = torch.cat([obs_buf, priv_latent, history_buf_comp], dim=-1)
+            
+        print(f"DEBUG compute_observations - FINAL obs_buf shape: {self.obs_buf.shape}")
+        print(f"DEBUG compute_observations - Expected config size: {self.cfg.env.num_observations}")
 
         # update buffer
         self.obs_history_buf = torch.where(

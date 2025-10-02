@@ -3,10 +3,13 @@ from configs.legged_go2_config import LeggedRobotCfg, LeggedRobotCfgPPO
 
 class Go2Cfg( LeggedRobotCfg ):
     class env(LeggedRobotCfg.env):
-        num_envs = 4096
+        num_envs = 96
 
         n_scan = 187
-        n_priv_latent = 54
+        n_priv_latent = 51  # Fixed: actual computed size (4+1+4+1+1+12+12+12+4=51)
+        n_proprio = 45
+        history_len = 10
+        num_observations = n_proprio + n_scan + history_len*n_proprio + n_priv_latent
         n_proprio = 45
         history_len = 10
         num_observations = n_proprio + n_scan + history_len*n_proprio + n_priv_latent
@@ -183,6 +186,7 @@ class Go2Cfg( LeggedRobotCfg ):
         include_act_obs_pair_buf = False
 
 class Go2CfgPPO( LeggedRobotCfgPPO ):
+
     class algorithm( LeggedRobotCfgPPO.algorithm ):
         entropy_coef = 0.01
         learning_rate = 1.e-3
@@ -207,21 +211,19 @@ class Go2CfgPPO( LeggedRobotCfgPPO ):
         rnn_num_layers = 1
 
         tanh_encoder_output = False
-        num_costs = 9
+        num_costs = 7  # Fixed: match environment cost configuration
 
         teacher_act = False
         imi_flag = False
     
-    class runner( LeggedRobotCfgPPO.runner ):
+    class onpolicy( LeggedRobotCfgPPO.runner ):
         run_name = 'THUtest'
         experiment_name = 'THU_go2'
         policy_class_name = 'ActorCriticMixedBarlowTwins'
-        runner_class_name = 'OnConstraintPolicyRunner'
+        runner_class_name = 'Onexecute'
         algorithm_class_name = 'PPO'
-        max_iterations = 100
+        max_iterations = 300
         num_steps_per_env = 2
         resume = False
         resume_path = ''
- 
 
-  

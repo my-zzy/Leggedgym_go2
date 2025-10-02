@@ -5,9 +5,12 @@ import statistics
 import warnings
 
 import torch
+from torch.utils.tensorboard import SummaryWriter
 from global_config import ROOT_DIR
 
 from ac import ActorCriticmlp
+from ac.actor_critic import ActorCriticMixedBarlowTwins, ActorCriticBarlowTwins
+from net import PPO
 from envs.vec_env import VecEnv
 from ac.depth_backbone import DepthOnlyFCBackbone58x87, RecurrentDepthBackbone
 from copy import copy, deepcopy
@@ -88,6 +91,9 @@ class Onexecute:
 
     def learn(self, num_learning_iterations, init_at_random_ep_len=False):
         # initialize writer
+        if self.log_dir is not None and self.writer is None:
+            self.writer = SummaryWriter(log_dir=self.log_dir)
+            
         if init_at_random_ep_len:
             self.env.episode_length_buf = torch.randint_like(self.env.episode_length_buf,
                                                              high=int(self.env.max_episode_length))
@@ -131,7 +137,7 @@ class Onexecute:
                     obs, privileged_obs, rewards,costs,dones, infos = self.env.step(actions)
                     critic_obs = privileged_obs if privileged_obs is not None else obs
                     obs, critic_obs,rewards,costs,dones = obs.to(self.device), critic_obs.to(self.device), rewards.to(self.device),costs.to(self.device),dones.to(self.device)
-                    self.alg.process_env_step(rewards,costs,dones, infos)
+                    self.alg.process_env_step(rewards,costs,dones)
 
                     if self.log_dir is not None:
                         # Book keeping
@@ -263,7 +269,8 @@ class Onexecute:
         print("Loading model from {}...".format(path))
         loaded_dict = torch.load(path, map_location=self.device)
         self.alg.actor_critic.load_state_dict(loaded_dict['model_state_dict'])
-        self.alg.estimator.load_state_dict(loaded_dict['estimator_state_dict'])
+        if self.alg.estimator is not None and 'estimator_state_dict' in loaded_dict:
+            self.alg.estimator.load_state_dict(loaded_dict['estimator_state_dict'])
         if self.if_depth:
             if 'depth_encoder_state_dict' not in loaded_dict:
                 warnings.warn("'depth_encoder_state_dict' key does not exist, not loading depth encoder...")
