@@ -222,7 +222,7 @@ class Go2CfgPPO( LeggedRobotCfgPPO ):
         policy_class_name = 'ActorCriticMixedBarlowTwins'
         runner_class_name = 'Onexecute'
         algorithm_class_name = 'PPO'
-        max_iterations = 300
+        max_iterations = 1500
         num_steps_per_env = 2
         resume = False
         resume_path = ''
