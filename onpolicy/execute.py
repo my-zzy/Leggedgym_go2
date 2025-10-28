@@ -23,7 +23,7 @@ class Onexecute:
                  log_dir=None,
                  device='cpu'):
 
-        self.cfg = train_cfg["onpolicy"]
+        self.cfg = train_cfg["runner"]
         self.alg_cfg = train_cfg["algorithm"]
         self.policy_cfg = train_cfg["policy"]
         self.depth_encoder_cfg = train_cfg["depth_encoder"]

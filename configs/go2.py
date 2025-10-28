@@ -3,16 +3,16 @@ from configs.legged_go2_config import LeggedRobotCfg, LeggedRobotCfgPPO
 
 class Go2Cfg( LeggedRobotCfg ):
     class env(LeggedRobotCfg.env):
-        num_envs = 96
+        num_envs = 128
 
         n_scan = 187
         n_priv_latent = 51  # Fixed: actual computed size (4+1+4+1+1+12+12+12+4=51)
         n_proprio = 45
         history_len = 10
         num_observations = n_proprio + n_scan + history_len*n_proprio + n_priv_latent
-        n_proprio = 45
-        history_len = 10
-        num_observations = n_proprio + n_scan + history_len*n_proprio + n_priv_latent
+        # n_proprio = 45
+        # history_len = 10
+        # num_observations = n_proprio + n_scan + history_len*n_proprio + n_priv_latent
 
     class init_state( LeggedRobotCfg.init_state ):
         pos = [0.0, 0.0, 0.42] # x,y,z [m]
@@ -216,7 +216,7 @@ class Go2CfgPPO( LeggedRobotCfgPPO ):
         teacher_act = False
         imi_flag = False
     
-    class onpolicy( LeggedRobotCfgPPO.runner ):
+    class runner( LeggedRobotCfgPPO.runner ):
         run_name = 'THUtest'
         experiment_name = 'THU_go2'
         policy_class_name = 'ActorCriticMixedBarlowTwins'

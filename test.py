@@ -4,7 +4,8 @@ import os
 
 from isaacgym import gymapi
 from envs import LeggedRobot
-from ac import *
+from ac import ActorCriticmlp
+from ac.actor_critic import ActorCriticMixedBarlowTwins, ActorCriticBarlowTwins
 from utils import  get_args, export_policy_as_jit, task_registry
 from configs import *
 from utils.helpers import class_to_dict
@@ -52,7 +53,7 @@ def play(args):
     policy_cfg_dict = class_to_dict(train_cfg.policy)
     runner_cfg_dict = class_to_dict(train_cfg.runner)
     actor_critic_class = eval(runner_cfg_dict["policy_class_name"])
-    policy: ActorCriticmlp = actor_critic_class(env.cfg.env.n_proprio,
+    policy: ActorCriticMixedBarlowTwins = actor_critic_class(env.cfg.env.n_proprio,
                                                       env.cfg.env.n_scan,
                                                       env.num_obs,
                                                       env.cfg.env.n_priv_latent,
@@ -60,9 +61,9 @@ def play(args):
                                                       env.num_actions,
                                                       **policy_cfg_dict)
     print(policy)
-    model_dict = torch.load(os.path.join(ROOT_DIR, 'THUmodel.pt'))
+    model_dict = torch.load(os.path.join(ROOT_DIR, 'logs/THU_go2/Oct23_18-32-21_THUtest/THUmodel_1500.pt'))
     policy.load_state_dict(model_dict['model_state_dict'])
-    #policy.half()
+    policy.half()
     policy = policy.to(env.device)
     policy.save_torch_jit_policy('THUmodel_torchscript.pt',env.device)
 
