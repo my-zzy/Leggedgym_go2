@@ -2,7 +2,7 @@ from .base_config import BaseConfig
 
 class LeggedRobotCfg(BaseConfig):
     class env:
-        num_envs = 96
+        num_envs = 4096
 
         n_scan = 132
         n_priv_latent = 4 + 1 + 12 + 12 + 6 

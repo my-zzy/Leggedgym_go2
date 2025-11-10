@@ -3,7 +3,7 @@ from configs.legged_go2_config import LeggedRobotCfg, LeggedRobotCfgPPO
 
 class Go2Cfg( LeggedRobotCfg ):
     class env(LeggedRobotCfg.env):
-        num_envs = 128
+        num_envs = 4096
 
         n_scan = 187
         n_priv_latent = 51  # Fixed: actual computed size (4+1+4+1+1+12+12+12+4=51)
@@ -222,7 +222,7 @@ class Go2CfgPPO( LeggedRobotCfgPPO ):
         policy_class_name = 'ActorCriticMixedBarlowTwins'
         runner_class_name = 'Onexecute'
         algorithm_class_name = 'PPO'
-        max_iterations = 1500
+        max_iterations = 5000
         num_steps_per_env = 2
         resume = False
         resume_path = ''

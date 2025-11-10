@@ -61,7 +61,7 @@ def play(args):
                                                       env.num_actions,
                                                       **policy_cfg_dict)
     print(policy)
-    model_dict = torch.load(os.path.join(ROOT_DIR, 'logs/THU_go2/Oct23_18-32-21_THUtest/THUmodel_1500.pt'))
+    model_dict = torch.load(os.path.join(ROOT_DIR, 'logs/THU_go2/Nov03_14-54-44_THUtest/THUmodel_1500.pt'))
     policy.load_state_dict(model_dict['model_state_dict'])
     policy.half()
     policy = policy.to(env.device)

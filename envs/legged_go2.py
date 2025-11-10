@@ -359,7 +359,7 @@ class LeggedRobot(BaseTask):
                             dof_vel_comp,
                             action_history_comp),dim=-1)
         
-        print(f"DEBUG compute_observations - obs_buf (proprio) shape: {obs_buf.shape}")
+        # print(f"DEBUG compute_observations - obs_buf (proprio) shape: {obs_buf.shape}")
 
         noise_scales = self.cfg.noise.noise_scales
         noise_level = self.cfg.noise.noise_level
@@ -406,7 +406,7 @@ class LeggedRobot(BaseTask):
                                 kp_factor_comp,
                                 kd_factor_comp), dim=-1)
         
-        print(f"DEBUG compute_observations - priv_latent shape: {priv_latent.shape}")
+        # print(f"DEBUG compute_observations - priv_latent shape: {priv_latent.shape}")
         
         # add perceptive inputs if not blind
         if self.cfg.terrain.measure_heights:
@@ -427,8 +427,8 @@ class LeggedRobot(BaseTask):
             # print(f"DEBUG compute_observations - history_buf shape: {history_buf_comp.shape}")
             self.obs_buf = torch.cat([obs_buf, priv_latent, history_buf_comp], dim=-1)
             
-        print(f"DEBUG compute_observations - FINAL obs_buf shape: {self.obs_buf.shape}")
-        print(f"DEBUG compute_observations - Expected config size: {self.cfg.env.num_observations}")
+        # print(f"DEBUG compute_observations - FINAL obs_buf shape: {self.obs_buf.shape}")
+        # print(f"DEBUG compute_observations - Expected config size: {self.cfg.env.num_observations}")
 
         # update buffer
         self.obs_history_buf = torch.where(
