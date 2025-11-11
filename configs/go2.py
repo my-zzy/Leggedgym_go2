@@ -116,11 +116,11 @@ class Go2Cfg( LeggedRobotCfg ):
 
 
     class domain_rand( LeggedRobotCfg.domain_rand):
-        randomize_friction = True
+        randomize_friction = False
         friction_range = [0.5, 1.25]
         randomize_base_mass = False
         added_mass_range = [-1., 1.]
-        push_robots = True
+        push_robots = False
         push_interval_s = 15
         max_push_vel_xy = 1.
         
@@ -189,7 +189,7 @@ class Go2CfgPPO( LeggedRobotCfgPPO ):
 
     class algorithm( LeggedRobotCfgPPO.algorithm ):
         entropy_coef = 0.01
-        learning_rate = 1.e-3
+        learning_rate = 1.e-4
         max_grad_norm = 1
         num_learning_epochs = 5
         num_mini_batches = 4 # mini batch size = num_envs*nsteps / nminibatches
@@ -223,7 +223,7 @@ class Go2CfgPPO( LeggedRobotCfgPPO ):
         runner_class_name = 'Onexecute'
         algorithm_class_name = 'PPO'
         max_iterations = 5000
-        num_steps_per_env = 2
+        num_steps_per_env = 32
         resume = False
         resume_path = ''
 

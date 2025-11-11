@@ -1051,7 +1051,8 @@ class LeggedRobot(BaseTask):
         if self.cfg.depth.use_camera:
             window_name = "Depth Image"
             cv2.namedWindow(window_name, cv2.WINDOW_NORMAL)
-            cv2.imshow("Depth Image", self.depth_buffer[self.lookat_id, -1].cup().numpy() + 0.5)
+            # Ensure tensor is moved to CPU before converting to numpy
+            cv2.imshow("Depth Image", self.depth_buffer[self.lookat_id, -1].detach().cpu().numpy() + 0.5)
             cv2.waitKey(1) 
 
     def _init_height_points(self):
