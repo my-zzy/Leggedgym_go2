@@ -15,7 +15,7 @@ class Go2Cfg( LeggedRobotCfg ):
         # num_observations = n_proprio + n_scan + history_len*n_proprio + n_priv_latent
 
     class init_state( LeggedRobotCfg.init_state ):
-        pos = [0.0, 0.0, 0.42] # x,y,z [m]
+        pos = [0.0, 0.0, 0.3] # x,y,z [m]
         """
           unitree go2 sdk order:
                -0.1 <-3 FR_hip_joint 0 -> 0.0
@@ -179,6 +179,7 @@ class Go2Cfg( LeggedRobotCfg ):
 
     class cost:
         num_costs = 7
+        use_costs = False  # Set to True to enable cost function computation for constrained RL
     
     class terrain(LeggedRobotCfg.terrain):
         mesh_type = 'trimesh'  # "heightfield" # none, plane, heightfield or trimesh

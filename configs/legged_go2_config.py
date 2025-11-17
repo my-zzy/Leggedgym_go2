@@ -23,6 +23,7 @@ class LeggedRobotCfg(BaseConfig):
 
     class cost:
         num_costs = 1
+        use_costs = True  # Set to False to disable cost function computation
     
     class depth:
         use_camera = False

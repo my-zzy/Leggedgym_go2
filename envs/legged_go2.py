@@ -754,6 +754,10 @@ class LeggedRobot(BaseTask):
 
     def compute_cost(self):
         self.cost_buf[:] = 0
+        # Skip cost computation if use_costs is False
+        if not self.cfg.cost.use_costs:
+            return
+        
         for i in range(len(self.cost_functions)):
             name = self.cost_names[i]
             cost = self.cost_functions[i]() * self.cost_scales[name] * self.dt
@@ -954,6 +958,16 @@ class LeggedRobot(BaseTask):
                              for name in self.reward_scales.keys()}
         
     def _prepare_cost_function(self):
+        # Skip cost function preparation if costs are disabled
+        if not self.cfg.cost.use_costs:
+            print("Cost functions disabled (use_costs=False)")
+            self.cost_functions = []
+            self.cost_names = []
+            self.cost_k_values = torch.zeros(1, self.cfg.cost.num_costs, device=self.device)
+            self.cost_d_values_tensor = torch.zeros(1, 1, self.cfg.cost.num_costs, device=self.device)
+            self.cost_episode_sums = {}
+            return
+        
         # remove zero scales + multiply non-zero ones by dt
         for key in list(self.cost_scales.keys()):
             scale = self.cost_scales[key]

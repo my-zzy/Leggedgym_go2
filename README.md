@@ -54,6 +54,20 @@ python train.py --task=THUrl --headless
 tensorboard --logdir=logs
 ```
 
+### Enabling/Disabling Cost Functions
+
+You can choose whether to use cost functions (constrained RL) during training by modifying the `use_costs` flag in `configs/go2.py`:
+
+```python
+class cost:
+    num_costs = 7
+    use_costs = True   # Set to False to disable cost functions (standard RL)
+                       # Set to True to enable cost functions (constrained RL)
+```
+
+- **`use_costs = False`**: Standard PPO training without cost constraints (faster, simpler)
+- **`use_costs = True`**: Constrained PPO with safety costs (enforces joint limits, collision avoidance, etc.)
+
 ## Code structure
 
 ac

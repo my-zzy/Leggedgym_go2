@@ -61,7 +61,7 @@ def play(args):
                                                       env.num_actions,
                                                       **policy_cfg_dict)
     print(policy)
-    model_dict = torch.load(os.path.join(ROOT_DIR, 'logs/THU_go2/Nov03_14-54-44_THUtest/THUmodel_1500.pt'))
+    model_dict = torch.load(os.path.join(ROOT_DIR, 'logs/THU_go2/withrand/THUmodel_3000.pt'))
     policy.load_state_dict(model_dict['model_state_dict'])
     policy.half()
     policy = policy.to(env.device)
@@ -118,6 +118,7 @@ def play(args):
     print("feet air reward",feet_air_time/num_frames)
 
     video.release()
+    print("video saved as record.mp4")
 
     with torch.profiler.profile(activities=[torch.profiler.ProfilerActivity.CPU, torch.profiler.ProfilerActivity.CUDA]) as prof:
          for i in range(1000):
@@ -128,6 +129,6 @@ def play(args):
 if __name__ == '__main__':
     task_registry.register("THUrl",LeggedRobot,Go2Cfg(),Go2CfgPPO())
 
-    RECORD_FRAMES = True
+    RECORD_FRAMES = False
     args = get_args()
     play(args)
